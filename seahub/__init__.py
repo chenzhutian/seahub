@@ -2,6 +2,9 @@
 from signals import repo_created, repo_deleted
 from handlers import repo_created_cb, repo_deleted_cb
 
+import pro.ldap_syncer
+import pro.seafes
+
 repo_created.connect(repo_created_cb)
 repo_deleted.connect(repo_deleted_cb)
 
