@@ -612,7 +612,7 @@ SEND_EMAIL_ON_RESETTING_USER_PASSWD = True # Whether to send email when a system
 
 ENABLE_SUB_LIBRARY = True
 
-ES_INDEX_OFFICE_PDF = False
+ES_INDEX_OFFICE_PDF = True
 EXTERNAL_ES_SERVER = False
 ES_HOST = '127.0.0.1'
 ES_PORT = 9200
@@ -620,6 +620,7 @@ ES_LANG = ''
 ES_INDEX_WORKERS = 2
 ES_OFFICE_FILE_SIZE_LIMIT = 10
 ES_DEBUG = False
+ES_INTERVAL = '10m'
 
 ############################
 # Settings for Seahub Priv #

@@ -1,8 +1,10 @@
 #!coding: UTF_8
 
+import atexit
 import os
 import sys
 import subprocess
+import threading
 from operator import methodcaller
 
 def _expand(v):
@@ -21,7 +23,7 @@ def get_result_set_hits(result):
 
     return hits
 
-def run(argv, cwd=None, env=None, suppress_stdout=False, suppress_stderr=False):
+def run(argv, cwd=None, env=None, suppress_stdout=False, suppress_stderr=False, wait=True):
     '''Run a program and wait it to finish, and return its exit code. The
     standard output of this program is supressed.
 
@@ -42,8 +44,19 @@ def run(argv, cwd=None, env=None, suppress_stdout=False, suppress_stderr=False):
                                 stdout=stdout,
                                 stderr=stderr,
                                 env=env)
+        atexit.register(proc.terminate)
+        if wait:
+            return proc.wait()
+        return proc
 
-        return proc.wait()
+def set_interval(func, sec):
+    def func_wrapper():
+        set_interval(func, sec)
+        func()
+    t = threading.Timer(sec, func_wrapper)
+    t.start()
+    atexit.register(t.cancel)
+    return t
 
 def utf8_encode(s):
     return _utf8_convert(s, True)
