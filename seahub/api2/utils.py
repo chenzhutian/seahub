@@ -21,7 +21,7 @@ from pysearpc import SearpcError
 
 from seahub.base.accounts import User
 from seahub.base.templatetags.seahub_tags import email2nickname, \
-    translate_seahub_time, file_icon_filter, email2contact_email
+    translate_seahub_time, file_icon_filter
 from seahub.group.models import GroupMessage, MessageReply, \
     MessageAttachment, PublicGroup
 from seahub.group.views import is_group_staff
@@ -424,11 +424,17 @@ def get_user_common_info(email, avatar_size=AVATAR_DEFAULT_SIZE):
         logger.error(e)
         avatar_url = get_default_avatar_url()
 
+    p = Profile.objects.get_profile_by_user(email)
+    if p:
+        login_id = p.login_id if p.login_id else ''
+    else:
+        login_id = ''
+
     return {
         "email": email,
         "name": email2nickname(email),
-        "contact_email": email2contact_email(email),
-        "avatar_url": avatar_url
+        "avatar_url": avatar_url,
+        "login_id": login_id
     }
 
 def user_to_dict(email, request=None, avatar_size=AVATAR_DEFAULT_SIZE):
@@ -440,6 +446,6 @@ def user_to_dict(email, request=None, avatar_size=AVATAR_DEFAULT_SIZE):
     return {
         'user_name': d['name'],
         'user_email': d['email'],
-        'user_contact_email': d['contact_email'],
+        'user_login_id': d['login_id'],
         'avatar_url': avatar_url,
     }

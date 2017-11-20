@@ -1185,7 +1185,7 @@ if HAS_OFFICE_CONVERTER:
         return None
 
 # search realted
-HAS_FILE_SEARCH = False
+HAS_FILE_SEARCH = True
 if EVENTS_CONFIG_FILE:
     def check_search_enabled():
         enabled = False

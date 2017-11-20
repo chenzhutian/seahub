@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+
+{% load seahub_tags avatar_tags i18n %}
+{% load url from future %}
+
+{% block extra_style %}
+<style type="text/css">
+.search-results-file-icon-container {
+    width:36px;
+    text-align:center;
+}
+.search-results-file-icon {
+    max-width:36px;
+    max-height:36px;
+}
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="row">
+    <div class="col-sm-12 col-md-8">
+<form method="get" action="{% url 'search' %}" class="search-form" id="search-form">
+    <div class="input_and_submit">
+        <input type="text" class="search-input" name="q" placeholder="{% trans 'Search Files' %}" value="{{ keyword }}" />
+        <button type="submit" class="search-submit"><span class="icon-search"></span></button>
+    </div>
+    <span class="advanced-search vam icon-double-angle-{% if not search_repo and not search_ftypes %}down{% else %}up{% endif %}" title="{% trans "advanced" %}"></span>
+    <div class="advs hide">
+        <input type="submit" value="{% trans "Submit" %}" class="submit" />
+    </div>
+</form>
+
+<div id="search-results">
+    {% if not error %}
+{% if not results %}
+    <p>{% trans 'No result found' %}</p>
+{% else %}
+    <p class="tip">{% blocktrans count counter=total %}{{ total }} result{% plural %}{{ total }} results{% endblocktrans%}</p>
+    <ul id="search-results-list">
+    {% for file in results %}
+        {% if file.is_dir %}
+        <li class="search-results-item ovhd">
+        <img src="{{ MEDIA_URL }}img/folder-beige-192.png" width="36" height="36" alt="{% trans "Directory icon"%}" class="fleft" />
+        {% else %}
+        <li class="search-results-item search-results-file-item ovhd" data-repoid="{{file.repo.id}}" data-path="{{file.fullpath}}" data-name="{{file.name}}">
+            <div class="fleft search-results-file-icon-container">
+                <img src="{{ MEDIA_URL }}img/file/{{ file.name|file_icon_filter:192 }}" width="36" height="36" alt="{% trans "File"%}" class="search-results-file-icon" />
+            </div>
+        {% endif %}
+        <div class="main-con">
+            {% if file.is_dir %}
+            <a href="{% url 'view_common_lib_dir' file.repo.id file.fullpath|strip_slash %}" target="_blank" title="{{ file.fullpath|slice:'1:'}}">{{ file.name }}</a>
+            {% else %}
+            <a href="{% url 'view_lib_file' file.repo.id file.fullpath %}" target="_blank" title="{{ file.fullpath|slice:'1:'}}">{{ file.name }}</a>
+            {% endif %}
+            <br />
+            <a href="{% url 'view_common_lib_dir' file.repo.id file.parent_dir %}" target="_blank" class="parent-dir-link">{{ file.repo.name }}/{{ file.parent_dir }}</a>
+            <br />
+            {% if file.is_dir %}
+            <span class="time">{{ file.last_modified|translate_seahub_time }}</span>
+            {% else %}
+            <span class="time">{{ file.size|filesizeformat }} {{ file.last_modified|translate_seahub_time }}</span>
+            {% endif %}
+            {% if file.content_highlight %}
+            <p class="highlight-content">{{ file.content_highlight|safe }}</p>
+            {% endif %}
+        </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if total > per_page %}
+    <div id="paginator">
+        {% if current_page != 1 %}
+        <a href="#" data-page="{{ prev_page }}" class="prev">{% trans "Previous"%}</a>
+        {% endif %}
+        {% if has_more %}
+        <a href="#" data-page="{{ next_page }}" class="next">{% trans "Next"%}</a>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endif %}
+{% endif %}
+</div>
+</div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script type="text/javascript">
+(function() {
+    var form = $('#search-form'),
+        advs = $('.advs', form);
+    advs.prepend($('#advanced-search-form .search-scales').clone(true));
+    {% if search_repo or search_ftypes %}
+    advs.removeClass('hide');
+    {% endif %}
+    form.find('.advanced-search').click(function() {
+        advs.toggleClass('hide');
+        var it = $(this),
+            str = 'icon-double-angle-';
+        if (it.hasClass(str + 'down')) {
+            it.removeClass(str + 'down').addClass(str + 'up');
+        } else {
+            it.removeClass(str + 'up').addClass(str + 'down');
+        }
+        return false;
+    });
+    {% if custom_ftypes %}
+    var custom_ftypes = [];
+    {% for f in custom_ftypes %}
+    custom_ftypes.push("{{f}}");
+    {% endfor %}
+    var ftype_options = form.find('[name="ftype"]'); 
+    ftype_options.each(function() {
+        if (custom_ftypes.indexOf($(this).val()) != -1) {
+            $(this).attr('checked', true);
+            $(this).parent().addClass('checkbox-checked');
+        }
+    });
+    {% endif %}
+
+    // modify pagination link urls
+    var $paginator = $('#paginator');
+    var $prev_next = $('.prev, .next', $paginator);
+    var url_params = location.search.substr(1).split('&');
+    var url_param_names = [];
+    for (var i = 0, len = url_params.length; i < len; i++) {
+        url_param_names.push(url_params[i].split('=')[0]);
+    }
+    if (url_param_names.indexOf('page') != -1) {
+        $prev_next.each(function() {
+            $(this).attr('href', location.search.replace('page={{current_page}}', 'page=' + $(this).attr('data-page')));
+        });
+    } else {
+        $prev_next.each(function() {
+            $(this).attr('href', location.search + '&page=' + $(this).attr('data-page'));
+        });
+    }
+})();
+
+{% if enable_thumbnail %}
+function imageCheck(filename) {
+    // no file ext
+    if (filename.lastIndexOf('.') == -1) {
+        return false;
+    }
+    var file_ext = filename.substr(filename.lastIndexOf('.') + 1).toLowerCase();
+    var image_exts = ['gif', 'jpeg', 'jpg', 'png', 'ico', 'bmp'];
+    if (image_exts.indexOf(file_ext) != -1) {
+        return true;
+    } else {
+        return false;
+    }
+}
+function getThumbnail(i) {
+    var $item = $(img_file_items[i]);
+    $.ajax({
+        url: '{{SITE_ROOT}}thumbnail/' + $item.attr('data-repoid') + '/create/',
+        data: {
+            'path': $item.attr('data-path'),
+            'size': '{{thumbnail_size}}'
+        },
+        cache: false,
+        dataType: 'json',
+        success: function(data) {
+            $('.search-results-file-icon', $item)
+            .attr('src', '{{SITE_ROOT}}' + data.encoded_thumbnail_src)
+            .removeAttr('width height');
+        },
+        complete: function() {
+            if (i < img_file_items.length - 1) {
+                getThumbnail(++i);
+            }
+        }
+    });
+};
+
+var img_file_items = [];
+$('.search-results-file-item').each(function(index, item) {
+    var file_name = $(item).attr('data-name');
+    var file_is_img = imageCheck(file_name);
+    if (file_is_img) {
+        img_file_items.push(item);
+    }
+});
+if (img_file_items.length) {
+    getThumbnail(0);
+}
+{% endif %}
+</script>
+{% endblock %}

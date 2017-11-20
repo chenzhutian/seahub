@@ -138,11 +138,7 @@
                 {% trans "Professional Edition" %}
                 <% if (with_license) { %>
                     {% trans "licensed to" %} <%- license_to %>,
-                    <% if (license_mode == 'lifetime') { %>
-                        {% trans "upgrade service expired in" %} <%- license_expiration %>
-                    <% } else { %>
-                        {% trans "expires on" %} <%- license_expiration %>
-                    <% } %>
+                    {% trans "expires on" %} <%- license_expiration %>
                 <% } %>
 
                 <% if (app.pageOptions.is_default_admin) { %>

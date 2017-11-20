@@ -3,9 +3,8 @@ define([
     'underscore',
     'backbone',
     'common',
-    'jquery.ui.tabs',
-    'select2'
-], function($, _, Backbone, Common, Tabs, Select2) {
+    'app/views/folder-share-item'
+], function($, _, Backbone, Common, FolderShareItemView) {
     'use strict';
 
     var SharePopupView = Backbone.View.extend({
@@ -15,6 +14,8 @@ define([
 
         initialize: function(options) {
             this.is_repo_owner = options.is_repo_owner;
+            // for shared repo
+            this.is_admin = options.is_admin; // true or undefined
             this.is_virtual = options.is_virtual;
             this.user_perm = options.user_perm;
             this.repo_id = options.repo_id;
@@ -25,27 +26,38 @@ define([
 
             this.render();
 
-            this.$el.modal({
-                appendTo: "#main",
-                focus: false,
-                containerCss: {"padding": 0}
-            });
-            $('#simplemodal-container').css({'width':'auto', 'height':'auto'});
+            if ($(window).width() >= 768) {
+                this.$el.modal({focus: false});
+                $('#simplemodal-container').css({'width':'auto', 'height':'auto'});
+            } else {
+                this.$el.css({
+                    'width': $(window).width() - 50,
+                    'height': $(window).height() - 50,
+                    'overflow': 'auto'
+                }).modal({focus:false});
+            }
 
             this.$("#share-tabs").tabs();
 
-            if (!this.repo_encrypted) {
+            if (!this.repo_encrypted && app.pageOptions.can_generate_share_link) {
                 this.downloadLinkPanelInit();
             }
-            if (!this.is_dir && this.is_repo_owner) {
-                this.filePrivateSharePanelInit();
-            }
             if (this.is_dir) {
-                if (this.user_perm == 'rw' && !this.repo_encrypted) {
+                if (this.user_perm == 'rw' && !this.repo_encrypted && app.pageOptions.can_generate_upload_link) {
                     this.uploadLinkPanelInit();
                 }
-                if (!this.is_virtual && this.is_repo_owner) {
-                    this.dirPrivateSharePanelInit();
+                if (!this.is_virtual && (this.is_repo_owner || this.is_admin)) {
+                    this.dirUserSharePanelInit();
+                    this.dirGroupSharePanelInit();
+
+                    var _this = this;
+                    $(document).on('click', function(e) {
+                        var target = e.target || event.srcElement;
+                        if (!_this.$('.perm-edit-icon, .perm-toggle-select').is(target)) {
+                            _this.$('.perm').removeClass('hide');
+                            _this.$('.perm-toggle-select').addClass('hide');
+                        }
+                    });
                 }
             }
         },
@@ -56,19 +68,22 @@ define([
                     .replace('{placeholder}', '<span class="op-target ellipsis ellipsis-op-target" title="' + Common.HTMLescape(this.obj_name) + '">' + Common.HTMLescape(this.obj_name) + '</span>'),
                 is_dir: this.is_dir,
                 is_repo_owner: this.is_repo_owner,
+                is_admin: this.is_admin,
                 is_virtual: this.is_virtual,
                 user_perm: this.user_perm,
                 repo_id: this.repo_id,
-                repo_encrypted: this.repo_encrypted
+                can_generate_share_link: app.pageOptions.can_generate_share_link,
+                can_generate_upload_link: app.pageOptions.can_generate_upload_link,
+                repo_encrypted: this.repo_encrypted,
+                dirent_path: this.dirent_path
             }));
 
             return this;
         },
 
         events: {
-            'mouseenter .checkbox-label': 'highlightCheckbox',
-            'mouseleave .checkbox-label': 'rmHighlightCheckbox',
-            'click .checkbox-orig': 'clickCheckbox',
+            'click [type="checkbox"]': 'clickCheckbox',
+            'click .shared-link': 'clickToSelect',
 
             // download link
             'submit #generate-download-link-form': 'generateDownloadLink',
@@ -76,6 +91,10 @@ define([
             'submit #send-download-link-form': 'sendDownloadLink',
             'click #cancel-share-download-link': 'cancelShareDownloadLink',
             'click #delete-download-link': 'deleteDownloadLink',
+            'click #generate-download-link-form .generate-random-password': 'generateRandomDownloadPassword',
+            'keydown #generate-download-link-form .generate-random-password': 'generateRandomDownloadPassword',
+            'click #generate-download-link-form .show-or-hide-password': 'showOrHideDownloadPassword',
+            'keydown #generate-download-link-form .show-or-hide-password': 'showOrHideDownloadPassword',
 
             // upload link
             'submit #generate-upload-link-form': 'generateUploadLink',
@@ -83,53 +102,154 @@ define([
             'submit #send-upload-link-form': 'sendUploadLink',
             'click #cancel-share-upload-link': 'cancelShareUploadLink',
             'click #delete-upload-link': 'deleteUploadLink',
-
-            // file private share
-            'submit #file-private-share-form': 'filePrivateShare',
+            'click #generate-upload-link-form .generate-random-password': 'generateRandomUploadPassword',
+            'keydown #generate-upload-link-form .generate-random-password': 'generateRandomUploadPassword',
+            'click #generate-upload-link-form .show-or-hide-password': 'showOrHideUploadPassword',
+            'keydown #generate-upload-link-form .show-or-hide-password': 'showOrHideUploadPassword',
 
             // dir private share
-            'submit #dir-private-share-form': 'dirPrivateShare'
-        },
-
-        highlightCheckbox: function (e) {
-            $(e.currentTarget).addClass('hl');
-        },
-
-        rmHighlightCheckbox: function (e) {
-            $(e.currentTarget).removeClass('hl');
+            'click #add-dir-user-share-item .submit': 'dirUserShare',
+            'click #add-dir-group-share-item .submit': 'dirGroupShare'
         },
 
         clickCheckbox: function(e) {
-            var el = e.currentTarget;
-            $(el).parent().toggleClass('checkbox-checked');
+            var $el = $(e.currentTarget);
             // for link options such as 'password', 'expire'
-            $(el).closest('.checkbox-label').next().toggleClass('hide');
+            $el.closest('.checkbox-label').next('div').toggleClass('hide');
+        },
+
+        clickToSelect: function(e) {
+            $(e.currentTarget).select();
+        },
+
+        renderDownloadLink: function(link_data) {
+            var link = link_data.link,
+                d_link = link + '?dl=1'; // direct download link
+            var $link = this.$('#download-link'),
+                $dLink = this.$('#direct-dl-link');
+            var $span = $('span', $link),
+                $input = $('input', $link),
+                $dSpan = $('span', $dLink),
+                $dInput = $('input', $dLink);
+
+            this.download_link = link; // for 'link send'
+            this.download_link_token = link_data.token; // for 'link delete'
+
+            $span.html(link);
+            if (link_data.permissions.can_download) {
+                $dLink.show().prev('dt').show();
+                $dSpan.html(d_link);
+            } else {
+                $dLink.hide().prev('dt').hide();
+            }
+
+            if (link_data.is_expired) {
+                this.$('#send-download-link').addClass('hide');
+                this.$('#download-link, #direct-dl-link').append(' <span class="error">(' + gettext('Expired') + ')</span>');
+            }
+            this.$('#download-link-operations').removeClass('hide');
+
+            $input.val(link).css({'width': $span.width() + 2}).show();
+            $span.hide();
+            $dInput.val(d_link).css({'width': $dSpan.width() + 2}).show();
+            $dSpan.hide();
+        },
+
+        renderUploadLink: function(link_data) {
+            var link = link_data.link;
+            this.upload_link = link;
+            this.upload_link_token = link_data.token;
+
+            var $link = this.$('#upload-link'),
+                $input = $('input', $link);
+            $input.val(link).attr({'size': link.length}).show();
+            this.$('#upload-link-operations').removeClass('hide');
         },
 
         downloadLinkPanelInit: function() {
+            var $panel = $('#download-link-share');
+            var $loadingTip = this.$('.loading-tip');
             var _this = this;
-            var after_op_success = function(data) {
-                _this.$('.loading-tip').hide();
-                if (data['download_link']) {
-                    _this.download_link = data["download_link"]; // for 'link send'
-                    _this.download_link_token = data["token"]; // for 'link delete'
-                    _this.$('#download-link').html(data['download_link']); // TODO:
-                    _this.$('#direct-dl-link').html(data['download_link']+'?raw=1'); // TODO:
-                    _this.$('#download-link-operations').removeClass('hide');
-                } else {
-                    _this.$('#generate-download-link-form').removeClass('hide');
-                }
-            };
+
             // check if downloadLink exists
-            Common.ajaxGet({
-                'get_url': Common.getUrl({name: 'get_shared_download_link'}),
-                'data': {
+            $.ajax({
+                url: Common.getUrl({name: 'share_admin_share_links'}),
+                data: {
                     'repo_id': this.repo_id,
-                    'p': this.dirent_path,
-                    'type': this.is_dir ? 'd' : 'f'
+                    'path': this.dirent_path
                 },
-                'after_op_success': after_op_success
+                cache: false,
+                dataType: 'json',
+                success: function(data) { // data is [] or [{...}]
+                    if (data.length == 1) {
+                        var link_data = data[0];
+                        _this.renderDownloadLink(link_data);
+                    } else {
+                        _this.$('#generate-download-link-form').removeClass('hide');
+                    }
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        if (xhr.status == 403) {
+                            err_msg = gettext("Permission error");
+                        } else {
+                            err_msg = xhr.responseJSON.error_msg ? xhr.responseJSON.error_msg : gettext('Error');
+                        }
+                    } else {
+                        err_msg = gettext('Please check the network.');
+                    }
+                    $('.error', $panel).html(err_msg).show();
+                },
+                complete: function() {
+                    $loadingTip.hide();
+                }
             });
+        },
+
+        generateRandomPassword: function(e, form) {
+            if (e.type == 'keydown' && e.which != 32) { // enable only Space key
+                return;
+            }
+
+            var random_password_length = app.pageOptions.share_link_password_min_length;
+            var random_password = '';
+            var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789';
+            for (var i = 0; i < random_password_length; i++) {
+                random_password += possible.charAt(Math.floor(Math.random() * possible.length));
+            }
+            $('input[name=password], input[name=password_again]', form).attr('type', 'text').val(random_password);
+            $('.show-or-hide-password', form)
+            .attr('title', gettext('Hide'))
+            .attr('aria-label', gettext('Hide'))
+            .removeClass('icon-eye').addClass('icon-eye-slash');
+        },
+
+        generateRandomDownloadPassword: function(e) {
+            this.generateRandomPassword(e, $('#generate-download-link-form'));
+        },
+
+        showOrHidePassword: function(e, form) {
+            if (e.type == 'keydown' && e.which != 32) { // enable only Space key
+                return;
+            }
+
+            var icon = $('.show-or-hide-password', form),
+                passwd_input = $('input[name=password], input[name=password_again]', form);
+            icon.toggleClass('icon-eye icon-eye-slash');
+            if (icon.hasClass('icon-eye')) {
+                icon.attr('title', gettext('Show'));
+                icon.attr('aria-label', gettext('Show'));
+                passwd_input.attr('type', 'password');
+            } else {
+                icon.attr('title', gettext('Hide'));
+                icon.attr('aria-label', gettext('Hide'));
+                passwd_input.attr('type', 'text');
+            }
+        },
+
+        showOrHideDownloadPassword: function(e) {
+            this.showOrHidePassword(e, $('#generate-download-link-form'));
         },
 
         generateLink: function(options) {
@@ -141,6 +261,11 @@ define([
             if (link_type == 'download') {
                 var set_expiration_checkbox = $('[name="set_expiration"]', form),
                     set_expiration = set_expiration_checkbox.prop('checked');
+
+                if (app.pageOptions.is_pro) {
+                    var $preview_only = $('[name="preview_only"]', form);
+                    var preview_only = $preview_only.prop('checked');
+                }
             }
             var post_data = {};
 
@@ -153,7 +278,7 @@ define([
                     Common.showFormError(form_id, gettext("Please enter password"));
                     return false;
                 }
-                if (passwd.length < app.pageOptions.repo_password_min_length) {
+                if (passwd.length < app.pageOptions.share_link_password_min_length) {
                     Common.showFormError(form_id, gettext("Password is too short"));
                     return false;
                 }
@@ -165,13 +290,10 @@ define([
                     Common.showFormError(form_id, gettext("Passwords don't match"));
                     return false;
                 }
-                post_data["use_passwd"] = 1;
-                post_data["passwd"] = passwd;
-            } else {
-                post_data["use_passwd"] = 0;
+                post_data["password"] = passwd;
             }
 
-            if (set_expiration) { // for upload link, 'set_expiration' is undefined
+            if (link_type == 'download' && set_expiration) {
                 var expire_days_input = $('[name="expire_days"]', form),
                     expire_days = $.trim(expire_days_input.val());
                 if (!expire_days) {
@@ -185,19 +307,21 @@ define([
                 post_data["expire_days"] = expire_days;
             }
 
+            if (link_type == 'download' && preview_only) {
+                post_data["permissions"] = JSON.stringify({
+                    "can_preview": true,
+                    "can_download": false
+                });
+            }
+
             $('.error', form).addClass('hide').html('');
             var gen_btn = $('[type="submit"]', form);
             Common.disableButton(gen_btn);
 
             $.extend(post_data, {
                 'repo_id': this.repo_id,
-                'p': this.dirent_path
+                'path': this.dirent_path
             });
-            if (link_type == 'download') {
-                $.extend(post_data, {
-                    'type': this.is_dir? 'd' : 'f'
-                });
-            }
 
             var _this = this;
             var after_op_success = function(data) {
@@ -212,7 +336,7 @@ define([
                     passwd_input.val('');
                     passwd_again_input.val('');
                 }
-                if (set_expiration) {
+                if (link_type == 'download' && set_expiration) {
                     set_expiration_checkbox.prop('checked', false)
                         .parent().removeClass('checkbox-checked')
                         // hide 'day' input
@@ -220,17 +344,14 @@ define([
                     expire_days_input.val('');
                 }
 
+                if (link_type == 'download' && preview_only) {
+                    $preview_only.prop('checked', false);
+                }
+
                 if (link_type == 'download') {
-                    _this.$('#download-link').html(data["download_link"]); // TODO: add 'click & select' func
-                    _this.$('#direct-dl-link').html(data['download_link'] + '?raw=1');
-                    _this.download_link = data["download_link"]; // for 'link send'
-                    _this.download_link_token = data["token"]; // for 'link delete'
-                    _this.$('#download-link-operations').removeClass('hide');
+                    _this.renderDownloadLink(data);
                 } else {
-                    _this.$('#upload-link').html(data["upload_link"]);
-                    _this.upload_link = data["upload_link"];
-                    _this.upload_link_token = data["token"];
-                    _this.$('#upload-link-operations').removeClass('hide');
+                    _this.renderUploadLink(data);
                 }
             };
 
@@ -247,7 +368,7 @@ define([
             this.generateLink({
                 link_type: 'download',
                 form: this.$('#generate-download-link-form'),
-                post_url: Common.getUrl({name: 'get_shared_download_link'})
+                post_url: Common.getUrl({name: 'share_admin_share_links'})
             });
             return false;
         },
@@ -284,11 +405,11 @@ define([
             var after_op_success = function(data) {
                 $.modal.close();
                 var msg = gettext("Successfully sent to {placeholder}")
-                    .replace('{placeholder}', Common.HTMLescape(data['send_success'].join(', ')));
+                    .replace('{placeholder}', data['send_success'].join(', '));
                 Common.feedback(msg, 'success');
                 if (data['send_failed'].length > 0) {
                     msg += '<br />' + gettext("Failed to send to {placeholder}")
-                        .replace('{placeholder}', Common.HTMLescape(data['send_failed'].join(', ')));
+                        .replace('{placeholder}', data['send_failed'].join(', '));
                     Common.feedback(msg, 'info');
                 }
             };
@@ -335,42 +456,76 @@ define([
 
         deleteDownloadLink: function() {
             var _this = this;
-            var after_op_success = function(data) {
-                _this.$('#generate-download-link-form').removeClass('hide'),
-                _this.$('#download-link-operations').addClass('hide');
-            };
-            Common.ajaxGet({
-                'get_url': Common.getUrl({name: 'delete_shared_download_link'}),
-                'data': { 't': _this.download_link_token },
-                'after_op_success': after_op_success
+            $.ajax({
+                url: Common.getUrl({
+                    'name': 'share_admin_share_link',
+                    'token': this.download_link_token
+                }),
+                type: 'DELETE',
+                cache: false,
+                beforeSend: Common.prepareCSRFToken,
+                dataType: 'json',
+                success: function(data) {
+                    _this.$('#generate-download-link-form').removeClass('hide');
+                    _this.$('#download-link-operations').addClass('hide');
+                }
             });
         },
 
         uploadLinkPanelInit: function() {
+            var $panel = $('#dir-upload-link-share');
+            var $loadingTip = this.$('.loading-tip').show();
             var _this = this;
-            var after_op_success = function(data) {
-                if (data['upload_link']) {
-                    _this.upload_link_token = data["token"];
-                    _this.upload_link = data["upload_link"];
-                    _this.$('#upload-link').html(data["upload_link"]); // TODO
-                    _this.$('#upload-link-operations').removeClass('hide');
-                } else {
-                    _this.$('#generate-upload-link-form').removeClass('hide');
-                }
-            };
             // check if upload link exists
-            Common.ajaxGet({
-                'get_url': Common.getUrl({name: 'get_share_upload_link'}), // TODO
-                'data': {'repo_id': this.repo_id, 'p': this.dirent_path},
-                'after_op_success': after_op_success
+            $.ajax({
+                url: Common.getUrl({name: 'share_admin_upload_links'}),
+                data: {
+                    'repo_id': this.repo_id,
+                    'path': this.dirent_path
+                },
+                cache: false,
+                dataType: 'json',
+                success: function(data) { // data is [] or [{...}]
+                    if (data.length == 1) {
+                        var link_data = data[0];
+                        _this.renderUploadLink(link_data);
+                    } else {
+                        _this.$('#generate-upload-link-form').removeClass('hide');
+                    }
+                    $('.tip', $panel).show();
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        if (xhr.status == 403) {
+                            err_msg = gettext("Permission error");
+                        } else {
+                            err_msg = xhr.responseJSON.error_msg ? xhr.responseJSON.error_msg : gettext('Error');
+                        }
+                    } else {
+                        err_msg = gettext('Please check the network.');
+                    }
+                    $('.error', $panel).html(err_msg).show();
+                },
+                complete: function() {
+                    $loadingTip.hide();
+                }
             });
         },
 
-        generateUploadLink: function(e) {
+        generateRandomUploadPassword: function(e) {
+            this.generateRandomPassword(e, $('#generate-upload-link-form'));
+        },
+
+        showOrHideUploadPassword: function(e) {
+            this.showOrHidePassword(e, $('#generate-upload-link-form'));
+        },
+
+        generateUploadLink: function() {
             this.generateLink({
                 link_type: 'upload',
                 form: this.$('#generate-upload-link-form'),
-                post_url: Common.getUrl({name: 'get_share_upload_link'})
+                post_url: Common.getUrl({name: 'share_admin_upload_links'})
             });
             return false;
         },
@@ -399,133 +554,346 @@ define([
 
         deleteUploadLink: function() {
             var _this = this;
-            var after_op_success = function(data) {
-                _this.$('#generate-upload-link-form').removeClass('hide'),
-                _this.$('#upload-link-operations').addClass('hide');
-            };
-            Common.ajaxGet({
-                'get_url': Common.getUrl({name: 'delete_shared_upload_link'}),
-                'data': { 't': _this.upload_link_token },
-                'after_op_success': after_op_success
+            $.ajax({
+                url: Common.getUrl({
+                    'name': 'share_admin_upload_link',
+                    'token': this.upload_link_token
+                }),
+                type: 'DELETE',
+                cache: false,
+                beforeSend: Common.prepareCSRFToken,
+                dataType: 'json',
+                success: function(data) {
+                    _this.$('#generate-upload-link-form').removeClass('hide');
+                    _this.$('#upload-link-operations').addClass('hide');
+                }
             });
         },
 
-        filePrivateSharePanelInit: function() {
-            var form = this.$('#file-private-share-form');
+        dirUserSharePanelInit: function() {
+            var $loadingTip = this.$('.loading-tip').show();
+            var $panel = this.$('#dir-user-share');
+            var $table = $('table', $panel);
+            var $add_item = $('#add-dir-user-share-item');
+            var repo_id = this.repo_id,
+                path = this.dirent_path;
 
-            $('[name="emails"]', form).select2($.extend({
-                width: '400px'
-            },Common.contactInputOptionsForSelect2()));
-
-            form.removeClass('hide');
+            $.ajax({
+                url: Common.getUrl({
+                    name: 'dir_shared_items',
+                    repo_id: repo_id
+                }),
+                data: {
+                    'p': path,
+                    'share_type': 'user'
+                },
+                cache: false,
+                dataType: 'json',
+                success: function(data) {
+                    $(data).each(function(index, item) {
+                        var new_item = new FolderShareItemView({
+                            'repo_id': repo_id,
+                            'path': path,
+                            'item_data': {
+                                "user_email": item.user_info.name,
+                                "user_name": item.user_info.nickname,
+                                "permission": item.permission,
+                                'is_admin': item.is_admin,
+                                'for_user': true
+                            }
+                        });
+                        $add_item.after(new_item.el);
+                    });
+                    $('[name="emails"]', $add_item).select2($.extend({
+                        //width: '292px' // the container will copy class 'w100' from the original element to get width
+                    },Common.contactInputOptionsForSelect2()));
+                    $table.removeClass('hide');
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        if (xhr.status == 403) {
+                            err_msg = gettext("Permission error");
+                        } else {
+                            err_msg = xhr.responseJSON.error_msg ? xhr.responseJSON.error_msg : gettext('Error');
+                        }
+                    } else {
+                        err_msg = gettext('Please check the network.');
+                    }
+                    $('.error', $panel).html(err_msg).show();
+                },
+                complete: function() {
+                    $loadingTip.hide();
+                }
+            });
         },
 
-        filePrivateShare: function () {
-            var form = this.$('#file-private-share-form'),
-                form_id = form.attr('id');
+        dirGroupSharePanelInit: function() {
+            var $loadingTip = this.$('.loading-tip').show();
+            var $panel = this.$('#dir-group-share');
+            var $table = $('table', $panel);
+            var $add_item = $('#add-dir-group-share-item');
+            var repo_id = this.repo_id,
+                path = this.dirent_path;
 
-            var emails = $('[name="emails"]', form).val();
+            $.ajax({
+                url: Common.getUrl({
+                    name: 'dir_shared_items',
+                    repo_id: repo_id
+                }),
+                data: {
+                    'p': path,
+                    'share_type': 'group'
+                },
+                cache: false,
+                dataType: 'json',
+                success: function(data) {
+                    $(data).each(function(index, item) {
+                        var new_item = new FolderShareItemView({
+                            'repo_id': repo_id,
+                            'path': path,
+                            'item_data': {
+                                "group_id": item.group_info.id,
+                                "group_name": item.group_info.name,
+                                "permission": item.permission,
+                                'is_admin': item.is_admin,
+                                'for_user': false
+                            }
+                        });
+                        $add_item.after(new_item.el);
+                    });
+
+                    var groups = [];
+                    var prepareGroupsSelector = function() {
+                        var g_opts = '';
+                        for (var i = 0, len = groups.length; i < len; i++) {
+                            g_opts += '<option value="' + groups[i].id + '" data-index="' + i + '">' + groups[i].name + '</option>';
+                        }
+                        $('[name="groups"]', $add_item).html(g_opts).select2({
+                            placeholder: gettext("Select groups"),
+                            escapeMarkup: function(m) { return m; }
+                        });
+                    };
+                    if (app.pageOptions.enable_share_to_all_groups) {
+                        $.ajax({
+                            url: Common.getUrl({
+                                name: 'all_groups'
+                            }),
+                            type: 'GET',
+                            dataType: 'json',
+                            cache: false,
+                            success: function(data){
+                                for (var i = 0, len = data.length; i < len; i++) {
+                                    groups.push({
+                                        'id': data[i].id,
+                                        'name': data[i].name
+                                    });
+                                }
+                                groups.sort(function(a, b) {
+                                    return Common.compareTwoWord(a.name, b.name);
+                                });
+                            },
+                            error: function(xhr, textStatus, errorThrown) {
+                                var pre_msg = gettext("Failed to fetch groups:");
+                                var err_msg;
+                                if (xhr.responseText) {
+                                    if (xhr.status == 403) {
+                                        err_msg = gettext("Permission error");
+                                    } else {
+                                        err_msg = xhr.responseJSON.error_msg ? xhr.responseJSON.error_msg : gettext('Error');
+                                    }
+                                } else {
+                                    err_msg = gettext('Please check the network.');
+                                }
+                                $('.error', $panel).html(pre_msg + ' ' + err_msg).show();
+                            },
+                            complete: function() {
+                                prepareGroupsSelector();
+                                $table.removeClass('hide');
+                            }
+                        });
+                    } else {
+                        groups = app.pageOptions.groups || [];
+                        prepareGroupsSelector();
+                        $table.removeClass('hide');
+                    }
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        if (xhr.status == 403) {
+                            err_msg = gettext("Permission error");
+                        } else {
+                            err_msg = xhr.responseJSON.error_msg ? xhr.responseJSON.error_msg : gettext('Error');
+                        }
+                    } else {
+                        err_msg = gettext('Please check the network.');
+                    }
+                    $('.error', $panel).html(err_msg).show();
+                },
+                complete: function() {
+                    $loadingTip.hide();
+                }
+            });
+        },
+
+        dirUserShare: function () {
+            var $panel = $('#dir-user-share');
+            var $form = this.$('#add-dir-user-share-item'); // pseudo form
+
+            var emails_input = $('[name="emails"]', $form),
+                emails = emails_input.val(); // string
             if (!emails) {
-                Common.showFormError(form_id, gettext("It is required."));
                 return false;
             }
 
-            var post_data = {
-                'repo_id': this.repo_id,
-                'path': this.dirent_path,
-                'emails': emails
-            };
-            var post_url = Common.getUrl({name: 'private_share_file'});
-            var after_op_success = function (data) {
-                $.modal.close();
-                var msg = gettext("Successfully shared to {placeholder}")
-                    .replace('{placeholder}', Common.HTMLescape(data['shared_success'].join(', ')));
-                Common.feedback(msg, 'success');
-                if (data['shared_failed'].length > 0) {
-                    msg += '<br />' + gettext("Failed to share to {placeholder}")
-                        .replace('{placeholder}', Common.HTMLescape(data['shared_failed'].join(', ')));
-                    Common.feedback(msg, 'info');
+            var $add_item = $('#add-dir-user-share-item');
+            var repo_id = this.repo_id,
+                path = this.dirent_path;
+            var $perm = $('[name="permission"]', $form);
+            var perm = $perm.val();
+            var $error = $('.error', $panel);
+            var $submitBtn = $('[type="submit"]', $form);
+
+            Common.disableButton($submitBtn);
+            $.ajax({
+                url: Common.getUrl({
+                    name: 'dir_shared_items',
+                    repo_id: repo_id
+                }) + '?p=' + encodeURIComponent(path),
+                dataType: 'json',
+                method: 'PUT',
+                beforeSend: Common.prepareCSRFToken,
+                traditional: true,
+                data: {
+                    'share_type': 'user',
+                    'username': emails.split(','),
+                    'permission': perm
+                },
+                success: function(data) {
+                    if (data.success.length > 0) {
+                        $(data.success).each(function(index, item) {
+                            var new_item = new FolderShareItemView({
+                                'repo_id': repo_id,
+                                'path': path,
+                                'item_data': {
+                                    "user_email": item.user_info.name,
+                                    "user_name": item.user_info.nickname,
+                                    "permission": item.permission,
+                                    'is_admin': item.is_admin,
+                                    'for_user': true
+                                }
+                            });
+                            $add_item.after(new_item.el);
+                        });
+                        emails_input.select2("val", "");
+                        $('option', $perm).removeAttr('selected');
+                        $('[value="rw"]', $perm).attr('selected', 'selected');
+                        $error.addClass('hide');
+                    }
+                    if (data.failed.length > 0) {
+                        var err_msg = '';
+                        $(data.failed).each(function(index, item) {
+                            err_msg += Common.HTMLescape(item.email) + ': ' + item.error_msg + '<br />';
+                        });
+                        $error.html(err_msg).removeClass('hide');
+                    }
+                },
+                error: function(xhr) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        var parsed_resp = $.parseJSON(xhr.responseText);
+                        err_msg = parsed_resp.error||parsed_resp.error_msg;
+                    } else {
+                        err_msg = gettext("Failed. Please check the network.");
+                    }
+                    $error.html(err_msg).removeClass('hide');
+                },
+                complete: function() {
+                    Common.enableButton($submitBtn);
                 }
-            };
-
-            Common.ajaxPost({
-                'form': form,
-                'post_url': post_url,
-                'post_data': post_data,
-                'after_op_success': after_op_success,
-                'form_id': form_id
             });
-            return false;
         },
 
-        dirPrivateSharePanelInit: function() {
-            // no 'share to all'
-            var form = this.$('#dir-private-share-form');
+        dirGroupShare: function () {
+            var $panel = $('#dir-group-share');
+            var $form = this.$('#add-dir-group-share-item'); // pseudo form
 
-            $('[name="emails"]', form).select2($.extend({
-                width: '400px'
-            },Common.contactInputOptionsForSelect2()));
+            var $groups_input = $('[name="groups"]', $form),
+                groups = $groups_input.val(); // null or [group.id]
 
-            var groups = app.pageOptions.groups || [];
-            var g_opts = '';
-            for (var i = 0, len = groups.length; i < len; i++) {
-                g_opts += '<option value="' + groups[i].id + '" data-index="' + i + '">' + groups[i].name + '</option>';
-            }
-            $('[name="groups"]', form).html(g_opts).select2({
-                placeholder: gettext("Select groups"),
-                width: '400px',
-                escapeMarkup: function(m) { return m; }
-            });
-
-            form.removeClass('hide');
-            this.$('.loading-tip').hide();
-        },
-
-        dirPrivateShare: function () {
-            var form = this.$('#dir-private-share-form'),
-                form_id = form.attr('id');
-
-            var emails = $('[name="emails"]', form).val(), // string
-                groups = $('[name="groups"]', form).val(); // null or [group.id]
-
-            if (!emails && !groups) {
-                Common.showFormError(form_id, gettext("Please select a contact or a group."));
+            if (!groups) {
                 return false;
             }
 
-            var post_data = {
-                'repo_id': this.repo_id,
-                'path': this.dirent_path
-            };
-            if (emails) {
-                post_data['emails'] = emails;
-            }
-            if (groups) {
-                post_data['groups'] = groups.join(',');
-            }
-            post_data['perm'] = $('[name="permission"]', form).val();
-            var post_url = Common.getUrl({name: 'private_share_dir'});
-            var after_op_success = function(data) {
-                $.modal.close();
-                var msg = gettext("Successfully shared to {placeholder}")
-                    .replace('{placeholder}', Common.HTMLescape(data['shared_success'].join(', ')));
-                Common.feedback(msg, 'success');
-                if (data['shared_failed'].length > 0) {
-                    msg += '<br />' + gettext("Failed to share to {placeholder}")
-                        .replace('{placeholder}', Common.HTMLescape(data['shared_failed'].join(', ')));
-                    Common.feedback(msg, 'info');
-                }
-            };
+            var $add_item = $('#add-dir-group-share-item');
+            var repo_id = this.repo_id,
+                path = this.dirent_path;
+            var $perm = $('[name="permission"]', $form),
+                perm = $perm.val();
+            var $error = $('.error', $panel);
+            var $submitBtn = $('[type="submit"]', $form);
 
-            Common.ajaxPost({
-                'form': form,
-                'post_url': post_url,
-                'post_data': post_data,
-                'after_op_success': after_op_success,
-                'form_id': form_id
+            Common.disableButton($submitBtn);
+            $.ajax({
+                url: Common.getUrl({
+                    name: 'dir_shared_items',
+                    repo_id: repo_id
+                }) + '?p=' + encodeURIComponent(path),
+                dataType: 'json',
+                method: 'PUT',
+                beforeSend: Common.prepareCSRFToken,
+                traditional: true,
+                data: {
+                    'share_type': 'group',
+                    'group_id': groups,
+                    'permission': perm
+                },
+                success: function(data) {
+                    if (data.success.length > 0) {
+                        $(data.success).each(function(index, item) {
+                            var new_item = new FolderShareItemView({
+                                'repo_id': repo_id,
+                                'path': path,
+                                'item_data': {
+                                    "group_id": item.group_info.id,
+                                    "group_name": item.group_info.name,
+                                    "permission": item.permission,
+                                    'is_admin': item.is_admin,
+                                    'for_user': false
+                                }
+                            });
+                            $add_item.after(new_item.el);
+                        });
+                        $groups_input.select2("val", "");
+                        $('option', $perm).removeAttr('selected');
+                        $('[value="rw"]', $perm).attr('selected', 'selected');
+                        $error.addClass('hide');
+                    }
+                    if (data.failed.length > 0) {
+                        var err_msg = '';
+                        $(data.failed).each(function(index, item) {
+                            err_msg += Common.HTMLescape(item.group_name) + ': ' + item.error_msg + '<br />';
+                        });
+                        $error.html(err_msg).removeClass('hide');
+                    }
+                },
+                error: function(xhr) {
+                    var err_msg;
+                    if (xhr.responseText) {
+                        var parsed_resp = $.parseJSON(xhr.responseText);
+                        err_msg = parsed_resp.error||parsed_resp.error_msg;
+                    } else {
+                        err_msg = gettext("Failed. Please check the network.");
+                    }
+                    $error.html(err_msg).removeClass('hide');
+                },
+                complete: function() {
+                    Common.enableButton($submitBtn);
+                }
             });
-            return false;
         }
+
     });
 
     return SharePopupView;

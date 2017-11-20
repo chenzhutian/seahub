@@ -82,7 +82,7 @@ from seahub.views import is_registered_user, check_file_lock, \
 from seahub.views.ajax import get_groups_by_user, get_group_repos
 from seahub.views.file import get_file_view_path_and_perm, send_file_access_msg
 if HAS_FILE_SEARCH:
-    from seahub_extra.search.views import search_keyword
+    from seahub.search.views import search_keyword
 from seahub.utils import HAS_OFFICE_CONVERTER
 if HAS_OFFICE_CONVERTER:
     from seahub.utils import query_office_convert_status, prepare_converted_html

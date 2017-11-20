@@ -1046,10 +1046,16 @@
                 <div id="download-link-operations" class="hide">
                     <dl>
                         <dt>{% trans "Link: " %}</dt>
-                        <dd id="download-link"></dd>
+                        <dd id="download-link">
+                            <span></span>
+                            <input type="text" readonly="readonly" value="" class="shared-link hide" />
+                        </dd>
                         <% if (!is_dir) { %>
                         <dt>{% trans "Direct Download Link: " %}</dt>
-                        <dd id="direct-dl-link"></dd>
+                        <dd id="direct-dl-link">
+                            <span></span>
+                            <input type="text" readonly="readonly" value="" class="shared-link hide" />
+                        </dd>
                         <% } %>
                     </dl>
                     {% if user.permissions.can_send_share_link_mail %}
@@ -1058,7 +1064,7 @@
                     <button id="delete-download-link">{% trans 'Delete' %}</button>
                     <form id="send-download-link-form" action="" class="hide">
                         <label for="email">{% trans "Send to:"%}</label><br />
-                        <input type="text" class="input" name="email" placeholder="{% trans "Emails, Seperated by ','"%}" id="email" /><br />
+                        <input type="text" class="input" name="email" placeholder="{% trans "Emails, separated by ','"%}" id="email" /><br />
                         <label for="extra-msg">{% trans "Message (optional):"%}</label><br />
                         <textarea class="textarea" name="extra_msg" id="extra-msg"></textarea><br />
                         <p class="error hide"></p>
@@ -1094,14 +1100,19 @@
                     <input type="submit" value="{% trans 'Generate'%}" />
                 </form>
                 <div id="upload-link-operations" class="hide">
-                    <p><span class="vam">{% trans 'Upload Link: ' %}</span><span id="upload-link"></span><!--input type="text" readonly="readonly" id="shared-link-text" class="vam" /--></p>
+                    <dl>
+                        <dt>{% trans "Upload Link: " %}</dt>
+                        <dd id="upload-link">
+                            <input type="text" readonly="readonly" value="" class="shared-link hide" />
+                        </dd>
+                    </dl>
                     {% if user.permissions.can_send_share_link_mail %}
                         <button id="send-upload-link">{% trans 'Send' %}</button>
                     {% endif %}
                     <button id="delete-upload-link">{% trans 'Delete' %}</button>
                     <form id="send-upload-link-form" action="" class="hide">
                         <label for="u-email">{% trans "Send to:"%}</label><br />
-                        <input type="text" class="input" name="email" placeholder="{% trans "Emails, Seperated by ','"%}" id="u-email" /><br />
+                        <input type="text" class="input" name="email" placeholder="{% trans "Emails, separated by ','"%}" id="u-email" /><br />
                         <label for="u-extra-msg">{% trans "Message (optional):"%}</label><br />
                         <textarea class="textarea" name="extra_msg" id="u-extra-msg"></textarea><br />
                         <p class="error hide"></p>

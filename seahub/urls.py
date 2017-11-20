@@ -111,6 +111,8 @@ urlpatterns = patterns(
     (r'^sso/$', sso),
     url(r'^shib-login/', shib_login, name="shib_login"),
 
+    (r'^oauth/', include('seahub.oauth.urls')),
+
     url(r'^$', libraries, name='libraries'),
     #url(r'^home/$', direct_to_template, { 'template': 'home.html' } ),
     url(r'^robots\.txt$', TemplateView.as_view(template_name='robots.txt', content_type='text/plain')),
@@ -466,7 +468,7 @@ urlpatterns += patterns(
 
 from seahub.utils import HAS_FILE_SEARCH
 if HAS_FILE_SEARCH:
-    from seahub_extra.search.views import search, pubuser_search
+    from seahub.search.views import search, pubuser_search
     urlpatterns += patterns('',
         url(r'^search/$', search, name='search'),
         url(r'^pubinfo/users/search/$', pubuser_search, name='pubuser_search'),

@@ -83,9 +83,11 @@ class Invitation(models.Model):
         if not email:
             email = self.accepter
 
-        context = self.to_dict()
-        context['site_name'] = SITE_NAME
-
+        context = {
+            'inviter': self.inviter,
+            'site_name': SITE_NAME,
+            'token': self.token,
+        }
         # subject = render_to_string('invitations/invitation_email_subject.txt',
         #                            context).rstrip()
         subject = _('%(user)s invited you to join %(site_name)s.') % {

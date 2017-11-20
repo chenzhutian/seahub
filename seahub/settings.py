@@ -231,6 +231,7 @@ INSTALLED_APPS = (
     'seahub.two_factor',
     'seahub.role_permissions',
     'seahub.trusted_ip',
+    "seahub.search",
 )
 
 # Enabled or disable constance(web settings).
@@ -240,7 +241,11 @@ CONSTANCE_DATABASE_CACHE_BACKEND = 'default'
 
 AUTHENTICATION_BACKENDS = (
     'seahub.base.accounts.AuthBackend',
+    'seahub.oauth.backends.OauthRemoteUserBackend',
 )
+
+ENABLE_OAUTH = False
+
 LOGIN_REDIRECT_URL = '/profile/'
 LOGIN_URL = SITE_ROOT + 'accounts/login'
 LOGOUT_REDIRECT_URL = None
@@ -606,6 +611,15 @@ SEND_EMAIL_ON_RESETTING_USER_PASSWD = True # Whether to send email when a system
 ##########################
 
 ENABLE_SUB_LIBRARY = True
+
+ES_INDEX_OFFICE_PDF = False
+EXTERNAL_ES_SERVER = False
+ES_HOST = '127.0.0.1'
+ES_PORT = 9200
+ES_LANG = ''
+ES_INDEX_WORKERS = 2
+ES_OFFICE_FILE_SIZE_LIMIT = 10
+ES_DEBUG = False
 
 ############################
 # Settings for Seahub Priv #
