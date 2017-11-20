@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Django",
+            "type": "python",
+            "request": "launch",
+            "stopOnEntry": false,
+            "pythonPath": "${config:python.pythonPath}",
+            "program": "${workspaceRoot}/manage.py",
+            "cwd": "${workspaceRoot}",
+            "args": [
+                "runserver",
+                "0.0.0.0:8000"
+            ],
+            "env": {
+                "CCNET_CONF_DIR":"~/dev/seafile-server/tests/conf",
+                "SEAFILE_CONF_DIR":"~/dev/seafile-server/tests/conf/seafile-data",
+                "PYTHONPATH":"/usr/local/lib/python2.7/dist-packages:thirdpart:\\$PYTHONPATH"
+            },
+            "envFile": "${workspaceRoot}/.env",
+            "console": "integratedTerminal",
+            "debugOptions": [
+                "WaitOnAbnormalExit",
+                "WaitOnNormalExit",
+                "RedirectOutput",
+                "DjangoDebugging"
+            ]
+        }
+    ]
+}
